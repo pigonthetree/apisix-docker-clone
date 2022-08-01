@@ -1,0 +1,129 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+apisix:
+  node_listen: 9080              # APISIX listening port
+  enable_ipv6: false
+
+  allow_admin:                  # http://nginx.org/en/docs/http/ngx_http_access_module.html#allow
+    - 0.0.0.0/0              # We need to restrict ip access rules for security. 0.0.0.0/0 is for test.
+
+  admin_key:
+    - name: "admin"
+      key: edd1c9f034335f136f87ad84b625c8f1
+      role: admin                 # admin: manage all configuration data
+                                  # viewer: only can view configuration data
+    - name: "viewer"
+      key: 4054f7cf07e344346cd3f287985e76a2
+      role: viewer
+  
+  enable_control: true
+  control:
+    ip: "0.0.0.0"
+    port: 9092
+
+nginx_config:
+  worker_processes: auto
+  enable_cpu_affinity: true
+  worker_rlimit_nofile: 20480
+
+  event:
+    worker_connections: 10620
+
+  http:
+    enable_access_log: true 
+    access_log: logs/access.log 
+    access_log_format: '{"@timestamp": "$time_iso8601", "servername": "$http_host", "remote_addr": "$remote_addr", "referer": "$http_referer", "request_method": "$request_method", "request_uri": "$request_uri",  "server_protocol": "$server_protocol", "request_time": "$request_time", "status": $status, "bytes":$body_bytes_sent, "useragent": "$http_user_agent", "x_forwarded": "$http_x_forwarded_for", "upstr_addr": "$upstream_addr", "upstr_host": "$upstream_http_host", "ups_resp_time": "$upstream_response_time"}'
+    access_log_format_escape: json
+    real_ip_header: X-Real-IP
+    lua_shared_dict:
+      internal-status: 10m
+      plugin-limit-req: 10m
+      plugin-limit-count: 10m
+      prometheus-metrics: 10m
+      plugin-limit-conn: 10m
+      upstream-healthcheck: 10m
+      worker-events: 10m
+      lrucache-lock: 10m
+      balancer-ewma: 10m
+      balancer-ewma-locks: 10m
+      balancer-ewma-last-touched-at: 10m
+      plugin-limit-count-redis-cluster-slot-lock: 1m
+      tracing_buffer: 10m
+      plugin-api-breaker: 10m
+      etcd-cluster-health-check: 10m
+      discovery: 1m
+      jwks: 1m
+      introspection: 10m
+      access-tokens: 1m
+      ext-plugin: 1m
+      kubernetes: 1m
+      tars: 1m    
+
+etcd:
+  host:                           # it's possible to define multiple etcd hosts addresses of the same etcd cluster.
+    - "http://etcd:2379"     # multiple etcd address
+  prefix: "/apisix"               # apisix configurations prefix
+  timeout: 30                     # 30 seconds
+
+ext-plugin:
+  cmd: ["/usr/local/apisix/apisix-go-plugin-runner/go-runner", "run"]
+
+plugins:
+  - log-rotate
+  - prometheus
+  - gzip
+  - traffic-split
+  - proxy-mirror
+  - proxy-cache
+  - proxy-rewrite
+  - ext-plugin-pre-req
+  - ext-plugin-post-req
+  - ext-plugin-post-resp
+
+plugin_attr:
+  log-rotate:
+    interval: 86400
+    max_kept: 15
+    enable_compression: false
+  prometheus:
+    export_uri: /apisix/prometheus/metrics
+    metric_prefix: apisix_
+    enable_export_server: true
+    export_addr:  
+      ip: "0.0.0.0"
+      port: 9091
+
+discovery:
+  nacos:
+    host:
+      #- "http://nacos:N2021Dderhb@172.22.38.208:8848"
+      - "http://nacos:N2021Dderhb@superapp-public.hdltest.com"
+    prefix: "/nacos/v1/"
+    fetch_interval: 30    # default 30 sec
+    weight: 100           # default 100
+    timeout:
+      connect: 2000       # default 2000 ms
+      send: 2000          # default 2000 ms
+      read: 5000          # default 5000 ms
+  #kubernetes:
+  #  service:
+  #    schema: https
+  #    host: 172.22.48.82
+  #    port: "6443"
+  #  client:
+  #    token: eyJhbGciOiJSUzI1NiIsImtpZCI6IjlpM0ZGbHJrSFQtdU11dTFWV3p0ZUh6RTk5NmUyemxfYWp5dWpiVWRWQ0EifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJzdXBlcmFwcC10ZXN0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImRlZmF1bHQtdG9rZW4tbjdmd3EiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGVmYXVsdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjYxODA2N2RkLTdiOGQtNDZjZC04ZmRhLWY0NmQ1NTEyMmM2MCIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpzdXBlcmFwcC10ZXN0OmRlZmF1bHQifQ.nERlmwPcb_cZkEfvNRNGcTAXPiWwZpe7X0NvzmXa-W-iYpn8sVOMjkZIgkVHyQjXF3f3FfJXxSXJoK--brBa7-AAqUcaB4vnk920jUtl7CjiDkVnMyybmbMFYUZwX0s22RBLOPL_cDhjmPS3ej7NvKIThK5RXPBhJjBwbZuMNto6e6i9Awo8oB5G61Pqw6_9YmTeR2XpP1vYbefg9qBGsqPIsGs3LapfeAb-TJFY30noutw881Cmj6jIudPZBhMZ9cfi5gugJGhV3UBcoObkzaa5wk81MkWhS-cLd2UdGQlUbccXikN_v_i_uc9qw_ZWy6NDid8teCGSUkLtpx1SBA
